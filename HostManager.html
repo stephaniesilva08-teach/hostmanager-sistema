@@ -1,0 +1,192 @@
+<!DOCTYPE html>
+<html lang="es"><head><meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="theme-color" content="#4f7cac"><title>HostManager</title>
+<style>
+*{box-sizing:border-box}body{margin:0;font:16px/1.4 system-ui,-apple-system,sans-serif;background:#f3f6fa;color:#1f2a37;padding-bottom:84px}
+[hidden]{display:none!important}
+header{background:#4f7cac;color:#fff;padding:calc(10px + env(safe-area-inset-top)) 14px 10px;position:sticky;top:0;z-index:5}
+#clk{font-size:12px;opacity:.9}#al{background:#e0a030;color:#1f2a37;border-radius:10px;padding:6px 10px;margin-top:6px;display:flex;justify-content:space-between;align-items:center;font-weight:600}
+main{padding:12px;max-width:760px;margin:auto}h2{margin:4px 0 10px}h3{margin:12px 0 6px}.m{color:#6b7785}small{font-size:13px}
+.s-libre{--c:#3f9e72}.s-ocupada{--c:#d9534f}.s-por_desocupar{--c:#e0a030}.s-limpieza{--c:#7a6bb5}.s-reservada{--c:#3b9bb0}
+.card{background:#fff;border-radius:14px;padding:12px;margin:0 0 10px;box-shadow:0 1px 3px #0002;display:flex;flex-direction:column;gap:6px;border-left:6px solid #d9e2ec}
+.card.t{border-left-color:var(--c)}.tag{background:var(--c,#7d8b99);color:#fff;border-radius:99px;padding:2px 10px;font-size:13px}
+.tile{background:#fff;border-radius:14px;padding:12px;text-align:center;border-top:5px solid var(--c,#4f7cac);box-shadow:0 1px 3px #0002}.tile b{display:block;font-size:28px}
+.g{display:grid;grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:10px}.g2{display:grid;grid-template-columns:repeat(auto-fill,minmax(155px,1fr));gap:10px}
+.bar{display:flex;justify-content:space-between;align-items:center;gap:6px;flex-wrap:wrap}.num{font-size:20px}
+.btn{min-height:46px;border:0;border-radius:12px;background:#4f7cac;color:#fff;font:600 16px system-ui;padding:0 14px;width:100%;display:flex;align-items:center;justify-content:center;cursor:pointer;margin-top:4px}
+.btn.s{background:#e3ebf3;color:#2b4f76}.btn.r{background:#d9534f}.btn.sm{width:auto;flex:1 1 auto;min-height:40px;font-size:14px}
+label{display:block;font-size:14px;color:#6b7785;margin-top:8px}
+input,select,textarea{width:100%;font:inherit;padding:10px;border:1px solid #d9e2ec;border-radius:10px;margin-top:3px;background:#fff;color:#1f2a37}
+.two{display:grid;grid-template-columns:1fr 1fr;gap:8px}.chips{display:flex;flex-wrap:wrap;gap:8px;margin:6px 0}
+.chip{display:flex!important;align-items:center;gap:4px;background:#eef3f8;border-radius:10px;padding:8px 10px;margin:0!important;color:#1f2a37!important;font-size:16px!important}
+.chip input{width:auto;margin:0}.chip small{color:#6b7785}.cfg{display:grid;grid-template-columns:28px 84px 1fr;gap:8px;align-items:end;border-top:1px solid #eee;padding:6px 0}.dim{opacity:.6}
+nav{position:fixed;bottom:0;left:0;right:0;background:#fff;display:grid;grid-template-columns:repeat(5,1fr);box-shadow:0 -2px 8px #0002;padding-bottom:env(safe-area-inset-bottom);z-index:6}
+nav button{border:0;background:none;padding:8px 0;font-size:12px;color:#6b7785}nav button b{display:block;font-size:20px}nav .on{color:#4f7cac;font-weight:700}
+.ov{position:fixed;inset:0;background:#0006;z-index:20;display:flex;align-items:flex-end}
+.sheet{background:#fff;width:100%;max-width:760px;margin:auto;max-height:90vh;overflow:auto;border-radius:18px 18px 0 0;padding:16px 16px calc(16px + env(safe-area-inset-bottom))}
+#toast{position:fixed;left:50%;bottom:96px;transform:translateX(-50%);background:#1f2a37;color:#fff;padding:10px 16px;border-radius:99px;z-index:30;max-width:90%;text-align:center}
+</style></head><body>
+<header><b>🍽 HostManager</b><div id="clk"></div>
+<div id="al" hidden><span>⏰ Ronda de revisión pendiente</span><button class="btn sm" data-act="nav" data-v="ronda" style="flex:0 0 auto">Ver</button></div></header>
+<main id="main"></main><nav id="nav"></nav>
+<div id="modal" class="ov" hidden><div id="sheet" class="sheet"></div></div><div id="toast" hidden></div>
+<script>
+const K='hostmanager_v1',ST={libre:'Disponible',ocupada:'Ocupada',por_desocupar:'Por desocupar',limpieza:'En limpieza',reservada:'Reservada'};
+const now=()=>Date.now(),$=s=>document.querySelector(s),pad=n=>String(n).padStart(2,'0'),uid=()=>Math.random().toString(36).slice(2,9);
+const esc=s=>String(s??'').replace(/[&<>"']/g,c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
+const hm=t=>{const d=new Date(t);return pad(d.getHours())+':'+pad(d.getMinutes())};
+const today=()=>{const d=new Date();return d.getFullYear()+'-'+pad(d.getMonth()+1)+'-'+pad(d.getDate())};
+const tm=s=>{const p=s.split(':');return +p[0]*60+ +p[1]};
+function init(){const t=[];for(let i=1;i<=24;i++)t.push({id:i,cap:i<=8?2:i<=18?4:i<=22?6:8,status:'libre',occ:0,seatedAt:0,eta:60,next:0,gid:null,joins:[i>1?i-1:0,i<24?i+1:0].filter(Boolean)});
+return{tables:t,groups:{},res:[],wait:[],hist:[],round:{on:true,every:30,next:now()+1800000,log:[]},defEta:60}}
+let S;try{S=JSON.parse(localStorage.getItem(K))}catch(e){}
+if(!S||!Array.isArray(S.tables))S=init();
+const save=()=>{try{localStorage.setItem(K,JSON.stringify(S))}catch(e){toast('No se pudo guardar los datos')}};
+const log=(t,x)=>{S.hist.unshift({t:now(),type:t,text:x});if(S.hist.length>500)S.hist.length=500};
+function toast(m){const t=$('#toast');t.textContent=m;t.hidden=false;clearTimeout(toast.h);toast.h=setTimeout(()=>t.hidden=true,3200)}
+const M=h=>{$('#sheet').innerHTML=h+'<button class="btn s" data-act="x">Cerrar</button>';$('#modal').hidden=false},X=()=>{$('#modal').hidden=true};
+const T=id=>S.tables.find(t=>t.id==id),pk=()=>[...document.querySelectorAll('.pk:checked')].map(i=>+i.value);
+/* ---- unidades (mesa sola o grupo unido) ---- */
+const mk=ids=>{const ts=ids.map(T);return{ids,ts,lead:ts[0],cap:ts.reduce((a,t)=>a+t.cap,0),label:ids.join(' + '),group:ids.length>1}};
+const uo=id=>{const t=T(id);return mk(t.gid?S.groups[t.gid].ids:[t.id])};
+function units(){const seen={},u=[];S.tables.forEach(t=>{if(t.gid){if(seen[t.gid])return;seen[t.gid]=1;u.push(mk(S.groups[t.gid].ids))}else u.push(mk([t.id]))});return u}
+const actRes=r=>r.status==='Pendiente'||r.status==='Confirmada';
+const resFor=ids=>S.res.filter(r=>actRes(r)&&r.date===today()&&r.tables.some(x=>ids.includes(x)));
+const st=u=>u.lead.status==='libre'&&resFor(u.ids).length?'reservada':u.lead.status;
+const busyS=s=>s==='ocupada'||s==='por_desocupar';
+function setU(u,all,occ){u.ts.forEach((t,i)=>{Object.assign(t,all);t.occ=i?0:(occ??t.occ)})}
+function canJoin(ids){if(ids.length<2)return true;const ok=(a,b)=>T(a).joins.includes(b)||T(b).joins.includes(a);
+const seen=[ids[0]],q=[ids[0]];while(q.length){const a=q.pop();ids.forEach(b=>{if(!seen.includes(b)&&ok(a,b)){seen.push(b);q.push(b)}})}return seen.length===ids.length}
+function join(ids){ids=[...ids].sort((a,b)=>a-b);
+if(ids.length<2)return'Elige al menos 2 mesas';if(ids.some(i=>T(i).gid))return'Alguna mesa ya está unida';
+if(ids.some(i=>T(i).status!=='libre'))return'Todas las mesas deben estar disponibles (limpias y listas)';
+if(!canJoin(ids))return'Esas mesas no están configuradas para unirse entre sí';
+const g=uid();S.groups[g]={ids,prev:ids.map(i=>({id:i,status:T(i).status}))};ids.forEach(i=>T(i).gid=g);log('unión','Mesas unidas: '+ids.join(' + '));return null}
+function split(g){const G=S.groups[g],ls=T(G.ids[0]).status;if(busyS(ls))return'No se puede separar con clientes sentados';
+G.ids.forEach(i=>{const t=T(i),p=G.prev.find(x=>x.id==i);t.gid=null;t.status=ls==='limpieza'?'limpieza':(p?p.status:'libre');t.occ=0;t.next=0;t.seatedAt=0});
+delete S.groups[g];log('unión','Mesas separadas: '+G.ids.join(' + '));return null}
+function chg(u,ns){const old=u.lead.status;
+if(ns==='libre'&&busyS(old))return toast('Primero pasa a limpieza y confirma que está limpia');
+const a={status:ns};if(ns!=='por_desocupar'){a.seatedAt=0;a.next=0}
+setU(u,a,ns==='por_desocupar'?undefined:0);log(ns==='limpieza'?'liberación':'estado','Mesa '+u.label+': '+ST[old]+' → '+ST[ns]);save();render()}
+function seat(ids,pax,ctx){pax=Math.floor(+pax);if(!(pax>0))return'Indica cuántas personas';
+const us=[];ids.forEach(i=>{const u=uo(i);if(!us.some(x=>x.lead===u.lead))us.push(u)});
+for(const u of us){if(u.lead.status!=='libre')return'Mesa '+u.label+' no está disponible ('+ST[u.lead.status]+')';
+const r=resFor(u.ids).find(r=>!(ctx&&ctx.type==='res'&&ctx.id===r.id));if(r)return'Mesa '+u.label+' está reservada ('+r.name+' '+r.time+')'}
+const cap=us.reduce((a,u)=>a+u.cap,0);if(pax>cap)return'Capacidad '+cap+' insuficiente para '+pax+' personas';
+let u=us[0];if(us.length>1){if(us.some(x=>x.group))return'Hay mesas ya unidas; elige solo la unidad completa';const e=join(us.map(x=>x.lead.id));if(e)return e;u=uo(us[0].lead.id)}
+const n=now();setU(u,{status:'ocupada',seatedAt:n,eta:S.defEta,next:n+S.round.every*60000},pax);log('ocupación','Mesa '+u.label+' ocupada por '+pax+' personas');
+if(ctx){if(ctx.type==='wait'){const w=S.wait.find(x=>x.id===ctx.id);w.status='Sentado';w.end=n;w.tables=u.ids;log('espera','Sentado desde espera: '+w.name)}
+else{const r=S.res.find(x=>x.id===ctx.id);r.status='Llegó'}}
+save();return null}
+function recs(p){const f=units().filter(u=>st(u)==='libre'),o=[];
+f.filter(u=>u.cap>=p).sort((a,b)=>a.cap-b.cap).slice(0,5).forEach(u=>o.push({ids:u.ids,cap:u.cap}));
+const s=f.filter(u=>!u.group),c=[];for(let i=0;i<s.length;i++)for(let j=i+1;j<s.length;j++){const a=s[i],b=s[j];
+if(a.cap<p&&b.cap<p&&a.cap+b.cap>=p&&canJoin([a.lead.id,b.lead.id]))c.push({ids:[a.lead.id,b.lead.id],cap:a.cap+b.cap,j:1})}
+return o.concat(c.sort((a,b)=>a.cap-b.cap).slice(0,3))}
+/* ---- vistas ---- */
+let V='home',U={pax:'',ctx:null},alerted=false,n30=0;
+const NAV=[['home','🏠','Inicio'],['mesas','🪑','Mesas'],['res','📅','Reservas'],['wait','⏳','Espera'],['more','☰','Más']];
+function vHome(){const us=units(),c={};Object.keys(ST).forEach(k=>c[k]=0);us.forEach(u=>c[st(u)]++);
+const ppl=S.tables.reduce((a,t)=>a+t.occ,0),wt=S.wait.filter(w=>w.status==='Esperando').length,rt=S.res.filter(r=>actRes(r)&&r.date===today()).length;
+return`<div class="g">${Object.keys(ST).map(k=>`<div class="tile s-${k}"><b>${c[k]}</b>${ST[k]}</div>`).join('')}<div class="tile"><b>${ppl}</b>Personas sentadas</div></div>
+<p class="m">${S.tables.length} mesas · ${us.length} unidades (las mesas unidas cuentan como una)</p>
+<div class="card">⏳ En espera: <b>${wt}</b> · 📅 Reservas de hoy: <b>${rt}</b></div>
+<button class="btn" data-act="nav" data-v="ubi">Ubicar clientes</button><button class="btn s" data-act="nav" data-v="ronda">Rondas</button>`}
+function card(u){const s=st(u),l=u.lead,b=busyS(s);let i;
+if(b){const rem=l.eta-Math.floor((now()-l.seatedAt)/60000);i=`<div>👥 ${l.occ} de ${u.cap}</div><div>⏱ ${rem>=0?'~'+rem+' min restantes':'+'+(-rem)+' min sobre lo estimado'}</div><div>🔎 Revisión ${l.next?hm(l.next):'—'}</div>`}
+else if(s==='reservada'){const r=resFor(u.ids)[0];i=`<div>Cap. ${u.cap}</div><div>📅 ${r?esc(r.name)+' '+r.time:'Reserva manual'}</div>`}else i=`<div>Cap. ${u.cap}</div>`;
+const a={libre:['sit','Sentar'],ocupada:['pre','Por desocupar'],por_desocupar:['clean','Pasar a limpieza'],limpieza:['ready','Limpia y lista ✓']}[s]||(resFor(u.ids).length?null:['ready','Quitar reserva']);
+return`<div class="card t s-${s}"><div class="bar"><b class="num">${u.label}</b><span class="tag">${ST[s]}</span></div>${u.group?'<small class="m">Mesas unidas</small>':''}${i}${a?`<button class="btn" data-act="${a[0]}" data-id="${l.id}">${a[1]}</button>`:''}
+<div class="bar"><button class="btn s sm" data-act="edit" data-id="${l.id}">Editar</button>${u.group&&!b?`<button class="btn s sm" data-act="sep" data-id="${l.id}">Separar</button>`:''}</div></div>`}
+const vMesas=()=>`<div class="bar"><h2>Mesas</h2><button class="btn s sm" data-act="joinM" style="flex:0 0 auto">🔗 Unir mesas</button></div><div class="g2">${units().map(card).join('')}</div>`;
+function vRes(){const L=[...S.res].sort((a,b)=>(a.date+a.time).localeCompare(b.date+b.time));
+return`<div class="bar"><h2>Reservas</h2><button class="btn sm" data-act="resM" style="flex:0 0 auto">+ Nueva</button></div>`+(L.length?L.map(r=>`<div class="card ${actRes(r)?'':'dim'}"><div class="bar"><b>${esc(r.name)}</b><span class="tag">${r.status}</span></div>
+<div>📅 ${r.date} ${r.time} · 👥 ${r.pax}</div><div>🪑 ${r.tables.length?'Mesa(s) '+r.tables.join(' + '):'Sin mesa asignada'}</div>${r.notes?`<small class="m">${esc(r.notes)}</small>`:''}
+<div class="bar">${actRes(r)?`<button class="btn sm" data-act="resSeat" data-id="${r.id}">Sentar</button><button class="btn s sm" data-act="resSt" data-id="${r.id}" data-s="No llegó">No llegó</button><button class="btn s sm" data-act="resSt" data-id="${r.id}" data-s="Cancelada">Cancelar</button>`:''}<button class="btn s sm" data-act="resM" data-id="${r.id}">Editar</button></div></div>`).join(''):'<p class="m">Sin reservas registradas.</p>')}
+function vWait(){const a=S.wait.filter(w=>w.status==='Esperando'),f=S.wait.filter(w=>w.status!=='Esperando').slice(-10).reverse();
+const c=w=>`<div class="card ${w.status==='Esperando'?'':'dim'}"><div class="bar"><b>${esc(w.name)}</b><span class="tag">${w.status}</span></div><div>👥 ${w.pax} · llegó ${hm(w.arr)} · ⏱ ${Math.floor(((w.end||now())-w.arr)/60000)} min${w.tables.length?' · Mesa '+w.tables.join('+'):''}</div>${w.notes?`<small class="m">${esc(w.notes)}</small>`:''}
+${w.status==='Esperando'?`<div class="bar"><button class="btn sm" data-act="waitAs" data-id="${w.id}">Asignar mesa</button><button class="btn s sm" data-act="waitRet" data-id="${w.id}">Retirado</button></div>`:''}</div>`;
+return`<div class="bar"><h2>Lista de espera</h2><button class="btn sm" data-act="waitM" style="flex:0 0 auto">+ Agregar</button></div>`+(a.length?a.map(c).join(''):'<p class="m">Nadie en espera.</p>')+(f.length?'<h3>Recientes</h3>'+f.map(c).join(''):'')}
+const vMore=()=>`<h2>Más</h2><button class="btn" data-act="nav" data-v="ubi">📍 Ubicar clientes</button><button class="btn" data-act="nav" data-v="ronda">🔎 Rondas</button><button class="btn" data-act="nav" data-v="hist">🕘 Historial</button><button class="btn" data-act="nav" data-v="conf">⚙️ Configuración</button>`;
+function ures(){const p=Math.floor(+U.pax);if(!(p>0))return'<p class="m">Escribe cuántas personas llegan.</p>';const r=recs(p);
+return r.length?r.map(x=>`<div class="card"><div class="bar"><b>${x.j?'Unir mesas ':x.ids.length>1?'Mesas unidas ':'Mesa '}${x.ids.join(' + ')}</b><span class="m">cap. ${x.cap}</span></div><button class="btn" data-act="place" data-ids="${x.ids.join(',')}">Sentar aquí</button></div>`).join(''):'<p>No hay mesas disponibles compatibles (se respetan ocupadas, en limpieza y reservadas).</p>'}
+const vUbi=()=>`<h2>Ubicar clientes</h2>${U.ctx?'<p class="m">Asignando desde lista de espera. <a href="#" data-act="uclr">Quitar</a></p>':''}<label>¿Cuántas personas llegan?<input id="u_p" type="number" min="1" inputmode="numeric" value="${esc(U.pax)}" oninput="U.pax=this.value;$('#ures').innerHTML=ures()"></label><div id="ures">${ures()}</div>`;
+function vRonda(){const R=S.round,l=Math.ceil((R.next-now())/60000);
+return`<h2>Rondas</h2><div class="card"><div>Próxima ronda: <b>${hm(R.next)}</b> ${R.on?(l>0?'(en '+l+' min)':'(¡pendiente!)'):'(recordatorios apagados)'}</div>
+<button class="btn" data-act="rondaM">Hacer ronda ahora</button><button class="btn s" data-act="rtog">${R.on?'Apagar':'Encender'} recordatorios cada ${R.every} min</button><button class="btn s" data-act="notif">Activar notificaciones del navegador</button>
+<small class="m">Los avisos (sonido, vibración y notificación) solo funcionan con la app abierta. Si cierras la app o el celular bloquea la pantalla, el navegador pausa los temporizadores y no llegarán avisos; al reabrirla verás la ronda pendiente.</small></div>
+<h3>Historial de rondas</h3>`+(R.log.length?R.log.slice(0,50).map(x=>`<div class="card"><b>${new Date(x.t).toLocaleString('es-CO')}</b><div>✅ Revisadas: ${x.ok.join(', ')||'—'}</div>${x.pend.length?`<div>⚠️ Sin revisar: ${x.pend.join(', ')}</div>`:''}</div>`).join(''):'<p class="m">Aún no hay rondas guardadas.</p>')}
+const vHist=()=>`<h2>Historial</h2>`+(S.hist.length?S.hist.slice(0,150).map(h=>`<div class="card"><small class="m">${new Date(h.t).toLocaleString('es-CO')} · ${h.type}</small><div>${esc(h.text)}</div></div>`).join(''):'<p class="m">Aún no hay registros.</p>');
+const vConf=()=>`<h2>Configuración</h2><div class="card"><label>Minutos estimados de ocupación por defecto<input id="c_e" type="number" min="1" value="${S.defEta}"></label>
+<small class="m">Capacidad por mesa y con qué mesas puede unirse (números separados por coma).</small>${S.tables.map(t=>`<div class="cfg"><b>${t.id}</b><label>Cap.<input class="cc" data-t="${t.id}" type="number" min="1" value="${t.cap}"></label><label>Se une con<input class="cj" data-t="${t.id}" value="${t.joins.join(',')}" placeholder="2,3"></label></div>`).join('')}
+<button class="btn" data-act="confOk">Guardar configuración</button></div>
+<div class="card"><h3>Copia de seguridad</h3><button class="btn" data-act="exp">Exportar copia</button><label class="btn s" style="margin:4px 0 0;color:#2b4f76">Importar copia<input type="file" accept=".json,application/json" hidden onchange="imp(this.files[0]);this.value=''"></label><button class="btn r" data-act="reset">Borrar todos los datos</button></div>`;
+function render(){$('#main').innerHTML=({home:vHome,mesas:vMesas,res:vRes,wait:vWait,more:vMore,ubi:vUbi,ronda:vRonda,hist:vHist,conf:vConf})[V]();
+$('#nav').innerHTML=NAV.map(n=>`<button class="${V===n[0]||(n[0]==='more'&&['ubi','ronda','hist','conf'].includes(V))?'on':''}" data-act="nav" data-v="${n[0]}"><b>${n[1]}</b>${n[2]}</button>`).join('')}
+/* ---- acciones ---- */
+const A={x:X,nav:d=>{V=d.v;render();scrollTo(0,0)},uclr:()=>{U.ctx=null;render()},
+sit:d=>{const u=uo(d.id);M(`<h3>Sentar en mesa ${u.label}</h3><p class="m">Capacidad ${u.cap}</p><label>Personas<input id="f_p" type="number" min="1" max="${u.cap}" inputmode="numeric"></label><button class="btn" data-act="sitOk" data-id="${d.id}">Confirmar</button>`)},
+sitOk:d=>{const e=seat([+d.id],$('#f_p').value);if(e)return toast(e);X();render()},
+pre:d=>chg(uo(d.id),'por_desocupar'),clean:d=>chg(uo(d.id),'limpieza'),ready:d=>chg(uo(d.id),'libre'),
+edit:d=>{const u=uo(d.id),l=u.lead;M(`<h3>Mesa ${u.label}</h3>`+u.ts.map(t=>`<label>Capacidad mesa ${t.id}<input class="ec" data-t="${t.id}" type="number" min="1" value="${t.cap}"></label>`).join('')+
+`<label>Estado<select id="e_s">${Object.keys(ST).map(k=>`<option value="${k}" ${k===l.status?'selected':''}>${ST[k]}</option>`).join('')}</select></label><label>Ocupantes<input id="e_o" type="number" min="0" value="${l.occ}"></label><label>Minutos estimados de ocupación<input id="e_e" type="number" min="1" value="${l.eta}"></label><p class="m">El tiempo estimado es solo una guía: nunca libera la mesa.</p><button class="btn" data-act="editOk" data-id="${d.id}">Guardar</button>`)},
+editOk:d=>{const u=uo(d.id),l=u.lead,old=l.status,ns=$('#e_s').value,occ=Math.floor(+$('#e_o').value)||0,b=busyS(ns),ob=busyS(old);
+const caps=[...document.querySelectorAll('.ec')].map(i=>[+i.dataset.t,Math.floor(+i.value)]);if(caps.some(c=>!(c[1]>=1)))return toast('Capacidad inválida');
+const cap=caps.reduce((a,c)=>a+c[1],0);
+if(b&&(occ<1||occ>cap))return toast('Ocupantes debe estar entre 1 y '+cap);
+if(ns==='libre'&&ob)return toast('Primero pasa a limpieza y confirma que está limpia');
+if(b&&!ob&&(old==='reservada'||resFor(u.ids).length))return toast('La mesa está reservada');
+caps.forEach(c=>T(c[0]).cap=c[1]);const a={status:ns,eta:Math.max(1,Math.floor(+$('#e_e').value)||l.eta)};
+if(b&&!ob){a.seatedAt=now();a.next=now()+S.round.every*60000}if(!b){a.seatedAt=0;a.next=0}
+setU(u,a,b?occ:0);log(old!==ns?'estado':'edición','Mesa '+u.label+(old!==ns?': '+ST[old]+' → '+ST[ns]:' editada'));save();X();render()},
+joinM:()=>{const f=units().filter(u=>!u.group&&u.lead.status==='libre');M(`<h3>Unir mesas</h3><p class="m">Solo mesas con estado disponible y configuradas como unibles entre sí.</p><div class="chips">${f.map(u=>`<label class="chip"><input type="checkbox" class="pk" value="${u.lead.id}">${u.lead.id}<small>cap ${u.cap}</small></label>`).join('')}</div><button class="btn" data-act="joinOk">Unir seleccionadas</button>`)},
+joinOk:()=>{const e=join(pk());if(e)return toast(e);save();X();render()},
+sep:d=>{const e=split(T(d.id).gid);if(e)return toast(e);save();render()},
+resM:d=>{const r=d.id?S.res.find(x=>x.id===d.id):{name:'',date:today(),time:'',pax:'',tables:[],status:'Pendiente',notes:''};
+M(`<h3>${d.id?'Editar':'Nueva'} reserva</h3><label>Nombre<input id="r_n" value="${esc(r.name)}"></label><div class="two"><label>Fecha<input id="r_d" type="date" value="${r.date}"></label><label>Hora<input id="r_h" type="time" value="${r.time}"></label></div><label>Personas<input id="r_p" type="number" min="1" value="${r.pax}"></label>
+<label>Mesas (varias deben poder unirse entre sí)</label><div class="chips">${S.tables.map(t=>`<label class="chip"><input type="checkbox" class="pk" value="${t.id}" ${r.tables.includes(t.id)?'checked':''}>${t.id}<small>${t.cap}</small></label>`).join('')}</div>
+<label>Estado<select id="r_s">${['Pendiente','Confirmada','Llegó','No llegó','Cancelada'].map(s=>`<option ${s===r.status?'selected':''}>${s}</option>`).join('')}</select></label><label>Observaciones<textarea id="r_o">${esc(r.notes)}</textarea></label><button class="btn" data-act="resOk" data-id="${d.id||''}">Guardar</button>`)},
+resOk:d=>{const r={name:$('#r_n').value.trim(),date:$('#r_d').value,time:$('#r_h').value,pax:Math.floor(+$('#r_p').value),tables:pk(),status:$('#r_s').value,notes:$('#r_o').value.trim()};
+if(!r.name||!r.date||!r.time||!(r.pax>0))return toast('Completa nombre, fecha, hora y personas');
+if(r.tables.length){const cap=r.tables.reduce((a,i)=>a+T(i).cap,0);if(cap<r.pax)return toast('Capacidad de las mesas ('+cap+') menor a '+r.pax+' personas');
+if(!canJoin(r.tables))return toast('Esas mesas no pueden unirse entre sí');
+const bad=r.tables.find(i=>T(i).gid&&!S.groups[T(i).gid].ids.every(x=>r.tables.includes(x)));if(bad)return toast('Mesa '+bad+' está unida a otras; inclúyelas todas');
+if(actRes(r)){const c=S.res.find(x=>x.id!==d.id&&actRes(x)&&x.date===r.date&&Math.abs(tm(x.time)-tm(r.time))<120&&x.tables.some(i=>r.tables.includes(i)));if(c)return toast('Choca con la reserva de '+c.name+' a las '+c.time)}}
+if(d.id){Object.assign(S.res.find(x=>x.id===d.id),r);log('reserva','Reserva editada: '+r.name)}else{r.id=uid();S.res.push(r);log('reserva','Reserva creada: '+r.name+' '+r.date+' '+r.time)}
+save();X();render()},
+resSeat:d=>{const r=S.res.find(x=>x.id===d.id);if(!r.tables.length)return toast('Asigna mesas a la reserva primero (Editar)');
+if(r.date!==today()&&!confirm('La reserva no es de hoy. ¿Sentar igual?'))return;const e=seat(r.tables,r.pax,{type:'res',id:r.id});if(e)return toast(e);log('reserva','Reserva sentada: '+r.name);save();render()},
+resSt:d=>{const r=S.res.find(x=>x.id===d.id);r.status=d.s;log('reserva',d.s+': '+r.name);save();render()},
+waitM:()=>M(`<h3>Agregar a lista de espera</h3><label>Nombre<input id="w_n"></label><label>Personas<input id="w_p" type="number" min="1" inputmode="numeric"></label><label>Observaciones<textarea id="w_o"></textarea></label><p class="m">La hora de llegada se registra automáticamente.</p><button class="btn" data-act="waitOk">Agregar</button>`),
+waitOk:()=>{const w={id:uid(),name:$('#w_n').value.trim(),pax:Math.floor(+$('#w_p').value),arr:now(),end:0,notes:$('#w_o').value.trim(),status:'Esperando',tables:[]};if(!w.name||!(w.pax>0))return toast('Indica nombre y personas');S.wait.push(w);log('espera','En espera: '+w.name+' ('+w.pax+')');save();X();render()},
+waitAs:d=>{const w=S.wait.find(x=>x.id===d.id);U={pax:w.pax,ctx:{type:'wait',id:w.id}};V='ubi';render()},
+waitRet:d=>{const w=S.wait.find(x=>x.id===d.id);w.status='Retirado';w.end=now();log('espera','Retirado: '+w.name);save();render()},
+place:d=>{const e=seat(d.ids.split(',').map(Number),U.pax,U.ctx);if(e)return toast(e);toast('Mesa asignada');U={pax:'',ctx:null};V='mesas';render()},
+rondaM:()=>{const o=units().filter(u=>busyS(u.lead.status));M(`<h3>Ronda de revisión</h3>${o.length?'<p class="m">Marca las mesas revisadas.</p><div class="chips">'+o.map(u=>`<label class="chip"><input type="checkbox" class="pk" value="${u.lead.id}">${u.label}</label>`).join('')+'</div>':'<p>No hay mesas ocupadas por revisar.</p>'}<button class="btn" data-act="rondaOk">Guardar ronda</button>`)},
+rondaOk:()=>{const ck=pk(),o=units().filter(u=>busyS(u.lead.status)),rv=o.filter(u=>ck.includes(u.lead.id)),pe=o.filter(u=>!ck.includes(u.lead.id)),n=now();
+rv.forEach(u=>setU(u,{next:n+S.round.every*60000}));S.round.log.unshift({t:n,ok:rv.map(u=>u.label),pend:pe.map(u=>u.label)});if(S.round.log.length>200)S.round.log.length=200;
+S.round.next=n+S.round.every*60000;alerted=false;log('ronda','Ronda: '+rv.length+' revisadas, '+pe.length+' sin revisar');save();X();render();tick()},
+rtog:()=>{S.round.on=!S.round.on;if(S.round.on){S.round.next=now()+S.round.every*60000;alerted=false}save();render();tick()},
+notif:()=>{if(!window.Notification)return toast('Este navegador no admite notificaciones');Notification.requestPermission().then(p=>toast(p==='granted'?'Notificaciones activadas':'Permiso denegado'))},
+confOk:()=>{const caps={},jn={};document.querySelectorAll('.cc').forEach(i=>caps[i.dataset.t]=Math.floor(+i.value));if(Object.values(caps).some(v=>!(v>=1)))return toast('Capacidades inválidas');
+for(const i of document.querySelectorAll('.cj')){const id=+i.dataset.t,l=i.value.split(',').map(s=>+s.trim()).filter(Boolean);if(l.some(x=>!T(x)||x===id))return toast('Mesa '+id+': lista de uniones inválida');jn[id]=[...new Set(l)]}
+const eta=Math.floor(+$('#c_e').value);if(!(eta>=1))return toast('Minutos estimados inválidos');
+const bad=units().find(u=>u.lead.occ>u.ts.reduce((a,t)=>a+caps[t.id],0));if(bad)return toast('Mesa '+bad.label+' tiene más ocupantes que la nueva capacidad');
+S.tables.forEach(t=>{t.cap=caps[t.id];t.joins=jn[t.id]});S.defEta=eta;log('config','Configuración actualizada');save();toast('Configuración guardada');render()},
+exp:async()=>{const j=JSON.stringify(S,null,1),f='hostmanager-'+today()+'.json';let d=null;try{d=await claude.use('downloads')}catch(e){}
+if(d){try{await d.save({filename:f,data:j})}catch(e){toast('No se guardó la copia')}return}
+const b=new Blob([j],{type:'application/json'}),a=document.createElement('a');a.href=URL.createObjectURL(b);a.download=f;a.click();setTimeout(()=>URL.revokeObjectURL(a.href),1000)},
+reset:()=>{if(confirm('¿Borrar TODOS los datos?')&&confirm('Se perderá todo. ¿Seguro?')){S=init();save();render()}}};
+function imp(f){if(!f)return;const r=new FileReader();r.onload=()=>{try{const d=JSON.parse(r.result);
+if(!Array.isArray(d.tables)||!d.tables.length||!d.groups||!d.round||!Array.isArray(d.res)||!Array.isArray(d.wait)||!Array.isArray(d.hist))throw 0;
+if(!confirm('Esto reemplazará los datos actuales. ¿Continuar?'))return;S=d;save();render();toast('Copia restaurada')}catch(e){toast('Archivo de copia no válido')}};r.readAsText(f)}
+document.addEventListener('click',e=>{if(e.target.id==='modal')return X();const b=e.target.closest('[data-act]');if(b&&A[b.dataset.act]){e.preventDefault();A[b.dataset.act](b.dataset)}});
+function beep(){try{const c=new AudioContext(),o=c.createOscillator();o.connect(c.destination);o.frequency.value=880;o.start();setTimeout(()=>{o.stop();c.close()},400)}catch(e){}}
+function tick(){const d=new Date();$('#clk').textContent=d.toLocaleDateString('es-CO',{weekday:'long',day:'numeric',month:'long'})+' · '+d.toLocaleTimeString('es-CO',{hour:'2-digit',minute:'2-digit',second:'2-digit'});
+const due=S.round.on&&now()>=S.round.next;$('#al').hidden=!due;
+if(due&&!alerted){alerted=true;beep();if(navigator.vibrate)navigator.vibrate([300,150,300]);if(window.Notification&&Notification.permission==='granted')try{new Notification('HostManager',{body:'Ronda de revisión de mesas pendiente'})}catch(e){}}
+if(++n30%30===0&&$('#modal').hidden&&!/INPUT|SELECT|TEXTAREA/.test(document.activeElement.tagName))render()}
+save();render();tick();setInterval(tick,1000);
+</script></body></html>
